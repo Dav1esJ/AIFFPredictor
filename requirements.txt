@@ -1,0 +1,5 @@
+pandas
+nfl_data_py
+scikit-learn
+numpy
+python-dotenv

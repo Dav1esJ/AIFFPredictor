@@ -1,0 +1,4 @@
+# config.py is gitignored — never commit real credentials.
+# this is the example of what the config.py file with contain
+ESPN_SWID = "your-swid-here"
+ESPN_S2 = "your-espn-s2-here"
