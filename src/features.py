@@ -27,6 +27,12 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
     # 6. call drop_insufficient_history()
     final_df = drop_insufficient_history(contexted)
     # 7. return final df
+    
+    print("before:", contexted.shape[0])
+    print("after:", final_df.shape[0])
+    print(final_df.null_count())
+    final_df.write_parquet("data/features.parquet")
+    
     return final_df
 
 
@@ -94,11 +100,22 @@ def add_context_features(df: pl.DataFrame) -> pl.DataFrame:
     """
     # add the snap count context features
     snap = nfl.load_snap_counts()
+    
+    players = nfl.load_players()
+    players = players.select(['gsis_id', 'pfr_id'])
+
+    snap = snap.join(players, left_on='pfr_player_id', right_on='pfr_id', how='left')
     # gets only the values from snap counts that I want to join into the main df
-    snap = snap.select(['player_name', 'season', 'week', 'team', 'game_id', 'offense_snaps', 'defense_snaps', 'st_snaps', 'offens'])
-    df.jo
-    df = df.with_columns(
-        
+    snap = snap.select(['gsis_id', 'game_id', 'offense_snaps', 'defense_snaps', 'st_snaps', 'offense_pct', 'defense_pct', 'st_pct'])
+    df = df.join(
+        snap,
+        left_on=['player_id', 'game_id'],
+        right_on=['gsis_id', 'game_id'],
+        how='left'
+    )
+    snap_cols = ['offense_snaps', 'defense_snaps', 'st_snaps', 'offense_pct', 'defense_pct', 'st_pct']
+    df = df.with_columns([pl.col(c).fill_null(0) for c in snap_cols])    
+    return df    
 
 
 def drop_insufficient_history(df: pl.DataFrame, min_games: int = 3) -> pl.DataFrame:
@@ -108,3 +125,10 @@ def drop_insufficient_history(df: pl.DataFrame, min_games: int = 3) -> pl.DataFr
     a season, or of the whole dataset). Prevents feeding the model
     rows full of nulls/defaults from insufficient history.
     """
+    rolling_cols = (
+        [f"avg_points_last_{window}" for window in [3, 5]]
+        + [f"avg_{col}_in_last_{window}" for col in ['targets', 'carries', 'attempts'] for window in [3, 5]]
+    )
+    df = df.drop_nulls(subset=rolling_cols)
+    
+    return df
