@@ -5,7 +5,7 @@ import nflreadpy as nfl
 import polars as pl
 import pandas as pd
 import os
-from src.data_ingestion import load_or_fetch_weekly_data
+from src.data_ingestion import load_or_fetch_weekly_data, save_cleaned_data
 
 
 def build_features(df: pl.DataFrame) -> pl.DataFrame:
@@ -31,14 +31,14 @@ def build_features(df: pl.DataFrame) -> pl.DataFrame:
     print("before:", contexted.shape[0])
     print("after:", final_df.shape[0])
     print(final_df.null_count())
-    final_df.write_parquet("data/features.parquet")
+    save_cleaned_data(final_df, "features.parquet")
     
     return final_df
 
 
-def add_rolling_points(df: pl.DataFrame, windows: list[int] = [3, 5]) -> pl.DataFrame:
+def add_rolling_points(df: pl.DataFrame, windows: list[int] = [1, 3, 5]) -> pl.DataFrame:
     """
-    For each player, adds columns like 'avg_points_last_3', 'avg_points_last_5' —
+    For each player, adds columns like 'avg_points_last_1', 'avg_points_last_3', 'avg_points_last_5' —
     the mean of 'my_fantasy_points' over the trailing N games, NOT including
     the current row's own points (this is the leakage check point — the
     current week's actual score must never feed into its own feature).
@@ -51,13 +51,13 @@ def add_rolling_points(df: pl.DataFrame, windows: list[int] = [3, 5]) -> pl.Data
             pl.col("my_fantasy_points")
             .shift(1)  # shift by 1 to exclude current row's points
             .rolling_mean(window)
-            .over("player_name")
+            .over("player_id")
             .alias(col_name)
         )
     return df
 
 
-def add_rolling_volume(df: pl.DataFrame, windows: list[int] = [3, 5]) -> pl.DataFrame:
+def add_rolling_volume(df: pl.DataFrame, windows: list[int] = [1, 3, 5]) -> pl.DataFrame:
     """
     Same trailing-window idea, applied to targets, carries, attempts
     instead of points. E.g. 'avg_targets_last_3'. This is often more
@@ -73,7 +73,7 @@ def add_rolling_volume(df: pl.DataFrame, windows: list[int] = [3, 5]) -> pl.Data
                 pl.col(col)
                 .shift(1)  # shift by 1 to exclude current row's values
                 .rolling_mean(window)
-                .over("player_name")
+                .over("player_id")
                 .alias(col_name)
             )
     return df
@@ -99,7 +99,7 @@ def add_context_features(df: pl.DataFrame) -> pl.DataFrame:
     Lower priority than the rolling stats — nice-to-have, not core.
     """
     # add the snap count context features
-    snap = nfl.load_snap_counts()
+    snap = nfl.load_snap_counts([2023, 2024, 2025])
     
     players = nfl.load_players()
     players = players.select(['gsis_id', 'pfr_id'])
@@ -111,10 +111,25 @@ def add_context_features(df: pl.DataFrame) -> pl.DataFrame:
         snap,
         left_on=['player_id', 'game_id'],
         right_on=['gsis_id', 'game_id'],
-        how='left'
+        how='left',
     )
     snap_cols = ['offense_snaps', 'defense_snaps', 'st_snaps', 'offense_pct', 'defense_pct', 'st_pct']
-    df = df.with_columns([pl.col(c).fill_null(0) for c in snap_cols])    
+    print(f"shape df: {df.shape[0]}")
+    print(f"non null {df.filter(pl.col('offense_snaps').is_not_null()).shape[0]}")
+    df = df.with_columns([pl.col(c).fill_null(0) for c in snap_cols])  
+    
+    # add columns for last 1, 3 and last 5 games' snap counts and percentages
+    for window in [1, 3, 5]:
+        for col in snap_cols:
+            col_name = f"{col}_last_{window}"
+            df = df.with_columns(
+                pl.col(col)
+                .shift(1)  # shift by 1 to exclude current row's values
+                .rolling_mean(window)
+                .over("player_id")
+                .alias(col_name)
+            )
+
     return df    
 
 
@@ -128,6 +143,8 @@ def drop_insufficient_history(df: pl.DataFrame, min_games: int = 3) -> pl.DataFr
     rolling_cols = (
         [f"avg_points_last_{window}" for window in [3, 5]]
         + [f"avg_{col}_in_last_{window}" for col in ['targets', 'carries', 'attempts'] for window in [3, 5]]
+           + [f"{col}_last_{window}" for col in ['offense_snaps', 'defense_snaps', 'st_snaps', 'offense_pct', 'defense_pct', 'st_pct'] for window in [3, 5]]
+           
     )
     df = df.drop_nulls(subset=rolling_cols)
     

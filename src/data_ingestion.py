@@ -32,7 +32,7 @@ def clean_weekly_data(df: pl.DataFrame) -> pl.DataFrame:
     """
     # Remove unnecessary columns by selecting only the columns we need to keep
     columns_to_keep = [
-        'player_name', 'position', 'week', 'team', 'season', 'game_id', 'opponent_team', 
+        'player_id', 'player_name', 'position', 'week', 'team', 'season', 'game_id', 'opponent_team', 
         'completions', 'attempts', 'sacks_suffered', 'passing_first_downs', 'passing_yards', 
         'carries', 'rushing_yards', 'rushing_first_downs', 'receptions', 'targets', 
         'receiving_yards', 'passing_tds', 'rushing_tds', 'receiving_tds', 'receiving_first_downs',
@@ -117,6 +117,7 @@ def clean_weekly_data(df: pl.DataFrame) -> pl.DataFrame:
     )
     
     df = df.select(columns_to_keep)
+    df = df.drop_nulls(subset=['player_id'])
         
     return df
 
