@@ -9,8 +9,8 @@ from src.data_ingestion import load_or_fetch_weekly_data, save_cleaned_data
 from sklearn.metrics import root_mean_squared_error, mean_absolute_error
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import accuracy_score, classification_report
 from sklearn.base import BaseEstimator
+import joblib
 
 
 def encode_categoricals(df: pl.DataFrame) -> pl.DataFrame:
@@ -143,9 +143,13 @@ def save_model(model, path: str) -> None:
     don't need to retrain every time you want to use it — same caching
     instinct as your data pipeline.
     """
+    joblib.dump(model, path)
+    print(f"Model saved to {path}")
+    
 
 
 def load_model(path: str) -> BaseEstimator:
     """
     Loads a previously trained model from disk.
     """
+    return joblib.load(path)
