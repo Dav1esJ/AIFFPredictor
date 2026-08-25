@@ -11,6 +11,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.base import BaseEstimator
 import joblib
+import os
 
 
 def encode_categoricals(df: pl.DataFrame) -> pl.DataFrame:
@@ -152,4 +153,6 @@ def load_model(path: str) -> BaseEstimator:
     """
     Loads a previously trained model from disk.
     """
+    if not os.path.exists(path):
+        return None
     return joblib.load(path)
