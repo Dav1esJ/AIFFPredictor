@@ -8,6 +8,9 @@ import sys
 from src.models import *
 import nflreadpy as nfl
 
+ROSTER_REQUIREMENTS = {"QB": 2, "RB": 4, "WR": 4, "TE": 2, "K": 2, "P": 2, "DE": 2, "S": 2}
+POSITION_TIERS = {"RB": 1, "WR": 1, "QB": 1, "TE": 2}
+
 
 def build_draft_pool(df: pl.DataFrame, model, feature_cols) -> pl.DataFrame:
     """
@@ -43,7 +46,7 @@ def load_draft_state(path: str = "../data/draft_state.json") -> dict:
     Could be as simple as a small JSON file.
     """
     if not os.path.exists(path):
-        return {"drafted_players:": [], "my_team:": []}
+        return {"drafted_players": [], "my_team": []}
     with open(path, "r") as f:
         return json.load(f)
         
@@ -61,6 +64,30 @@ def mark_player_drafted(player_id, my_draft = False, path: str = "../data/draft_
     with open(path, 'w') as f:
         json.dump(state, f, indent=2)
     
+def get_positions_needed(pool, state):
+    positions_filled = {"QB": 0, "RB": 0, "WR": 0, "TE": 0, "K": 0, "P": 0, "DE": 0, "S": 0}
+    for player in state['my_team']:
+        position = get_position_by_pid(player, pool)
+        positions_filled[position] = positions_filled.get(position, 0) + 1
+    positions_needed = {k: v - positions_filled.get(k, 0) for k, v in ROSTER_REQUIREMENTS.items()}
+    return positions_needed
+    
+def get_position_by_pid(pid, pool):
+    return pool.filter(pl.col("player_id") == pid).select("position").item()
+
+def get_priority_position(pool, state) -> str | None:
+    needed = get_positions_needed(pool, state)
+    needed = {pos: gap for pos, gap in needed.items() if gap > 0}  # only positions still short
+    if not needed:
+        return None
+
+    # find the lowest (highest-priority) tier that still has an unmet need
+    min_tier = min(POSITION_TIERS.get(pos, 99) for pos in needed)
+    candidates = {pos: gap for pos, gap in needed.items() if POSITION_TIERS.get(pos, 99) == min_tier}
+
+    # within that tier, the position with the biggest remaining gap wins
+    return max(candidates, key=candidates.get)
+    
 
 def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str = "../data/draft_state.json"):
     """
@@ -70,6 +97,10 @@ def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str
     # remove all drafted players from the current state
     state = load_draft_state(path)
     undrafted = pool.filter(~pl.col('player_id').is_in(state['drafted_players']))
+    
+    # if possition is none then determine the best position to draft
+    if position is None:
+        position = get_priority_position(pool, state)
         
     # filter by position and then sort by predicted point and take top 5
     if position is not None:
