@@ -13,6 +13,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  # src/ -> project root
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 
+
 def load_or_fetch_weekly_data(years: list[int], filename: str = "weekly_data.parquet", data_dir: Path = DEFAULT_DATA_DIR) -> pl.DataFrame:
     """
         Fetches weekly data for the specified years using the nflreadpy library.
