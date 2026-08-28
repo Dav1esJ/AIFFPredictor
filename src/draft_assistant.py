@@ -11,6 +11,10 @@ import nflreadpy as nfl
 ROSTER_REQUIREMENTS = {"QB": 2, "RB": 4, "WR": 4, "TE": 2, "K": 2, "P": 2, "DE": 2, "S": 2}
 POSITION_TIERS = {"RB": 1, "WR": 1, "QB": 1, "TE": 2}
 
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_STATE_PATH = str(PROJECT_ROOT / "data" / "draft_state.json")
+
 
 def build_draft_pool(df: pl.DataFrame, model, feature_cols) -> pl.DataFrame:
     """
@@ -26,8 +30,13 @@ def build_draft_pool(df: pl.DataFrame, model, feature_cols) -> pl.DataFrame:
     
     # filter the last row of each player based on who is currently on a roster
     pool = last_row_df.join(roster, left_on='player_id', right_on='gsis_id', how='semi')
+    
+    pool_encoded = encode_categoricals(pool)
+    missing_cols = [c for c in feature_cols if c not in pool_encoded.columns]
+    pool_encoded = pool_encoded.with_columns([pl.lit(0).alias(c) for c in missing_cols])
+    
         
-    prediction = predict(model, pool, feature_cols)
+    prediction = predict(model, pool_encoded, feature_cols)
     prediction = prediction.join(pool.select(['player_id', 'position']), on='player_id')
     return prediction
 
@@ -52,7 +61,7 @@ def load_draft_state(path: str = "../data/draft_state.json") -> dict:
         
     
 
-def mark_player_drafted(player_id, my_draft = False, path: str = "../data/draft_state.json"):
+def mark_player_drafted(player_id, my_draft = False, path: str = DEFAULT_STATE_PATH):
     """
     Updates draft state: adds player to drafted list, increments
     position count.
@@ -89,7 +98,7 @@ def get_priority_position(pool, state) -> str | None:
     return max(candidates, key=candidates.get)
     
 
-def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str = "../data/draft_state.json"):
+def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str = DEFAULT_STATE_PATH):
     """
     Filters the pool to exclude drafted players, optionally filters by
     position, sorts by predicted_points, returns top n.
@@ -108,4 +117,4 @@ def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str
     top_picks = undrafted.sort('predicted_points', descending=True).head(n)
     
     # return the top 5 player names
-    return top_picks['player_name'].to_list()
+    return top_picks.select(['player_name', 'predicted_points']).rows()
