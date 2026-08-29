@@ -37,7 +37,8 @@ def build_draft_pool(df: pl.DataFrame, model, feature_cols) -> pl.DataFrame:
     
         
     prediction = predict(model, pool_encoded, feature_cols)
-    prediction = prediction.join(pool.select(['player_id', 'position']), on='player_id')
+    prediction = prediction.join(pool.select(['player_id', 'position', 'team']), on='player_id')
+        
     return prediction
 
     
@@ -68,8 +69,10 @@ def mark_player_drafted(player_id, my_draft = False, path: str = DEFAULT_STATE_P
     """
     state = load_draft_state(path)
     if my_draft:
+        print(" Player drafted onto my team")
         state['my_team'].append(player_id)
     state['drafted_players'].append(player_id)
+    print("Player drafted")
     with open(path, 'w') as f:
         json.dump(state, f, indent=2)
     
@@ -117,4 +120,4 @@ def recommend_next_pick(pool, position: str | None = None, n: int = 5, path: str
     top_picks = undrafted.sort('predicted_points', descending=True).head(n)
     
     # return the top 5 player names
-    return top_picks.select(['player_name', 'predicted_points']).rows()
+    return top_picks.select(['player_name', 'predicted_points', 'team', 'position']).rows()

@@ -30,15 +30,15 @@ def find_player(name: str, pool: pl.DataFrame) -> str | None:
         return None
     elif len(players) == 1:
         return players["player_id"].item()
-    elif len(players) <= 5:
-        names = players["player_name"].to_list()
-        print(f"is it {', '.join(names[:-1])}, or {names[-1]}?")
-        return None
     else:
-        # take the top 5 players that score the most and reduce it to just those players
-        reduced = players.top_k(5, by="predicted_points")
-        names = reduced['player_name'].to_list()
-        print(f"too many options, is it one of these top options: {', '.join(names[:-1])}, or {names[-1]}?")
+        candidates = players.top_k(5, by="predicted_points") if len(players) > 5 else players
+        rows = candidates.select(['player_id', 'player_name', 'position', 'team']).rows()
+        for i, (pid, pname, pos, team) in enumerate(rows, 1):
+            print(f"{i}. {pname} ({pos}, {team})")
+        
+        choice = input("Which one? (number, or blank to cancel): ")
+        if choice.strip().isdigit() and 1 <= int(choice) <= len(rows):
+            return rows[int(choice) - 1][0]  # player_id from the chosen row
         return None
 
     
@@ -88,3 +88,6 @@ def run():
         
         else:
             print("unrecognized command")
+            
+if __name__ == "__main__":
+    run()
