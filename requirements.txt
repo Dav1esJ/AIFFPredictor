@@ -3,3 +3,5 @@ nflreadpy
 scikit-learn
 numpy
 python-dotenv
+pytest
+matplotlib
